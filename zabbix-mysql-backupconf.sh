@@ -22,11 +22,12 @@
 
 MYSQL="mysql"
 DBNAME="zabbix"
-DBUSER="zabbix"
-DBPASS=""
-DBHOST="localhost"
+DBUSER="root"
+DBPASS="123"
+DBHOST="127.0.0.1"
+DBPORT="3306"
 
-BACKUPDIR="/u0/backups/zabbix-conf"
+BACKUPDIR=$1
 
 # Delete old backups
 if [ -d "$BACKUPDIR" ]; then
@@ -44,7 +45,8 @@ fi
 SCHEMA_ONLY="alerts auditlog auditlog_details events event_recovery history history_log history_str history_text history_uint trends_uint trends"
 
 # If backing up all DBs on the server
-TABLES="`$MYSQL --user=$DBUSER --password=$DBPASS --host=$DBHOST --batch --skip-column-names -e "show tables" $DBNAME`"
+echo "Getting Tables ...."
+TABLES="`$MYSQL --host=$DBHOST --port=$DBPORT --user=$DBUSER --password=$DBPASS --batch --skip-column-names -e "show tables" $DBNAME`"
 
 # remove excluded tables
 for exclude in $SCHEMA_ONLY
@@ -54,24 +56,29 @@ done
 
 CONFTABLES=$TABLES
 
-DUMPFILE="${BACKUPDIR}/zbx-conf-bkup-`date +%Y%m%d-%H%M`.sql"
->"${DUMPFILE}"
+echo "Creating Backup Dir"
+BACKUPDIR="${BACKUPDIR}/`date +%Y%m%d-%H%M`"
+mkdir $BACKUPDIR
+
+DUMPFILE_DATA="${BACKUPDIR}/zabbix.data.sql"
+DUMPFILE_SCHEMA="${BACKUPDIR}/zabbix.schema.sql"
+
+>"${DUMPFILE_DATA}"
+>"${DUMPFILE_SCHEMA}"
 
 # CONFTABLES
 for table in ${CONFTABLES[*]}; do
 	echo "Backuping configuration table ${table}"
-	mysqldump --routines --opt --single-transaction --skip-lock-tables --extended-insert=FALSE \
-		-h ${DBHOST} -u ${DBUSER} -p${DBPASS} ${DBNAME} --tables ${table} >>"${DUMPFILE}"
+	mysqldump --routines --opt --single-transaction --skip-lock-tables --no-create-info --extended-insert=FALSE \
+		-h ${DBHOST} --port=${DBPORT} -u ${DBUSER} -p${DBPASS} ${DBNAME} --tables ${table} | grep INSERT >> "${DUMPFILE_DATA}"
 done
 
-# DATATABLES
-for table in ${SCHEMA_ONLY[*]}; do
-	echo "Backuping schema only for table ${table}"
-	mysqldump --routines --opt --single-transaction --skip-lock-tables --no-data	\
-		-h ${DBHOST} -u ${DBUSER} -p${DBPASS} ${DBNAME} --tables ${table} >>"${DUMPFILE}"
-done
+echo "Backuping schema"
+mysqldump --routines --opt --single-transaction --skip-lock-tables --no-data	\
+	-h ${DBHOST} -u ${DBUSER} -p${DBPASS} ${DBNAME} >>"${DUMPFILE_SCHEMA}"
 
-gzip -f "${DUMPFILE}"
+gzip -f "${DUMPFILE_DATA}"
+gzip -f "${DUMPFILE_SCHEMA}"
 
 echo
-echo "Backup Completed - ${DUMPFILE}"
+echo "Backup Completed"
