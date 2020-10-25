@@ -59,25 +59,25 @@ CONFTABLES=$TABLES
 echo "Creating Backup Dir"
 BACKUPDIR="${BACKUPDIR}/`date +%Y%m%d-%H%M`"
 mkdir $BACKUPDIR
+mkdir "$BACKUPDIR/data"
 
-DUMPFILE_DATA="${BACKUPDIR}/zabbix.data.sql"
+DUMPFILE_DATA="data.sql"
 DUMPFILE_SCHEMA="${BACKUPDIR}/zabbix.schema.sql"
 
->"${DUMPFILE_DATA}"
 >"${DUMPFILE_SCHEMA}"
 
 # CONFTABLES
 for table in ${CONFTABLES[*]}; do
 	echo "Backuping configuration table ${table}"
 	mysqldump --routines --opt --single-transaction --skip-lock-tables --no-create-info --extended-insert=FALSE \
-		-h ${DBHOST} --port=${DBPORT} -u ${DBUSER} -p${DBPASS} ${DBNAME} --tables ${table} | grep INSERT >> "${DUMPFILE_DATA}"
+		-h ${DBHOST} --port=${DBPORT} -u ${DBUSER} -p${DBPASS} ${DBNAME} --tables ${table} >> "${BACKUPDIR}/data/${table}.${DUMPFILE_DATA}"
+		gzip -f "${BACKUPDIR}/data/${table}.${DUMPFILE_DATA}" 2>&1
 done
 
 echo "Backuping schema"
 mysqldump --routines --opt --single-transaction --skip-lock-tables --no-data	\
 	-h ${DBHOST} -u ${DBUSER} -p${DBPASS} ${DBNAME} >>"${DUMPFILE_SCHEMA}"
 
-gzip -f "${DUMPFILE_DATA}"
 gzip -f "${DUMPFILE_SCHEMA}"
 
 echo
