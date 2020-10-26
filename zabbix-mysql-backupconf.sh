@@ -42,7 +42,8 @@ if [ ! -x /usr/bin/mysqldump ]; then
 	exit 1
 fi
 
-SCHEMA_ONLY="alerts auditlog auditlog_details events event_recovery history history_log history_str history_text history_uint trends_uint trends"
+SCHEMA_ONLY=""
+#SCHEMA_ONLY="alerts auditlog auditlog_details events event_recovery history history_log history_str history_text history_uint trends_uint trends"
 
 # If backing up all DBs on the server
 echo "Getting Tables ...."
@@ -68,14 +69,14 @@ DUMPFILE_SCHEMA="${BACKUPDIR}/zabbix.schema.sql"
 
 # CONFTABLES
 for table in ${CONFTABLES[*]}; do
-	echo "Backuping configuration table ${table}"
-	mysqldump --routines --opt --single-transaction --skip-lock-tables --no-create-info --extended-insert=FALSE \
+	echo "Backuping table ${table}"
+	mysqldump --routines --opt --no-create-info --extended-insert=FALSE \
 		-h ${DBHOST} --port=${DBPORT} -u ${DBUSER} -p${DBPASS} ${DBNAME} --tables ${table} >> "${BACKUPDIR}/data/${table}.${DUMPFILE_DATA}"
 		gzip -f "${BACKUPDIR}/data/${table}.${DUMPFILE_DATA}" 2>&1
 done
 
 echo "Backuping schema"
-mysqldump --routines --opt --single-transaction --skip-lock-tables --no-data	\
+mysqldump --routines --opt --no-data	\
 	-h ${DBHOST} -u ${DBUSER} -p${DBPASS} ${DBNAME} >>"${DUMPFILE_SCHEMA}"
 
 gzip -f "${DUMPFILE_SCHEMA}"
