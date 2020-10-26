@@ -5,25 +5,27 @@ import (
 	"compress/gzip"
 	"database/sql"
 	"fmt"
-	"github.com/cheggaaa/pb/v3"
-	_ "github.com/go-sql-driver/mysql"
-	"github.com/urfave/cli/v2"
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/cheggaaa/pb/v3"
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/urfave/cli/v2"
 )
 
-type OnLineReaded func(line string)
+type onLineReaded func(line string)
 
-type EachFile func(file *os.File)
+type eachFile func(file *os.File)
 
 var (
-	BackupFolder, Host, Port, User, Password, Database string
-	Workers                                            int
-	HideProgress                                       bool
+	mBackupFolder, mHost, mPort, mUser, mPassword, mDatabase string
+	mWorkers                                                 int
+	mHideProgress                                            bool
 )
 
 func main() {
@@ -39,7 +41,7 @@ func main() {
 			Usage:       "Backup folder",
 			Required:    true,
 			TakesFile:   false,
-			Destination: &BackupFolder,
+			Destination: &mBackupFolder,
 		},
 
 		&cli.IntFlag{
@@ -48,7 +50,7 @@ func main() {
 			Usage:       "Number of workers for data restore",
 			Required:    false,
 			Value:       runtime.NumCPU(),
-			Destination: &Workers,
+			Destination: &mWorkers,
 		},
 
 		&cli.StringFlag{
@@ -57,7 +59,7 @@ func main() {
 			Usage:       "Mysql Host",
 			Required:    false,
 			Value:       "127.0.0.1",
-			Destination: &Host,
+			Destination: &mHost,
 		},
 
 		&cli.StringFlag{
@@ -66,7 +68,7 @@ func main() {
 			Usage:       "Mysql Port",
 			Required:    false,
 			Value:       "3306",
-			Destination: &Port,
+			Destination: &mPort,
 		},
 
 		&cli.StringFlag{
@@ -75,7 +77,7 @@ func main() {
 			Usage:       "Mysql User",
 			Required:    false,
 			Value:       "root",
-			Destination: &User,
+			Destination: &mUser,
 		},
 
 		&cli.StringFlag{
@@ -84,7 +86,7 @@ func main() {
 			Usage:       "Mysql Password",
 			Required:    false,
 			Value:       "123",
-			Destination: &Password,
+			Destination: &mPassword,
 		},
 
 		&cli.StringFlag{
@@ -93,7 +95,7 @@ func main() {
 			Usage:       "Mysql database",
 			Required:    false,
 			Value:       "zabbix",
-			Destination: &Database,
+			Destination: &mDatabase,
 		},
 
 		&cli.BoolFlag{
@@ -102,7 +104,7 @@ func main() {
 			Usage:       "Hide Progress bar",
 			Value:       false,
 			HasBeenSet:  false,
-			Destination: &HideProgress,
+			Destination: &mHideProgress,
 		},
 	}
 
@@ -111,29 +113,29 @@ func main() {
 
 		var progress *pb.ProgressBar
 
-		if !HideProgress {
-			fs, _ := ioutil.ReadDir(BackupFolder + "/data")
+		if !mHideProgress {
+			fs, _ := ioutil.ReadDir(mBackupFolder + "/data")
 			progress = pb.Default.New(len(fs) + 1)
 		}
 
-		fmt.Printf("Starting %d Workers\n", Workers)
-		for w := 1; w <= Workers; w++ {
-			go StartWorker(Files, CreateMysqlConnection(Host, Port, User, Password, Database), progress)
+		fmt.Printf("Starting %d Workers\n", mWorkers)
+		for w := 1; w <= mWorkers; w++ {
+			go startWorker(Files, createMysqlConnection(mHost, mPort, mUser, mPassword, mDatabase), progress)
 		}
 
 		fmt.Println("Restoring...")
 
-		db := CreateMysqlConnection(Host, Port, User, Password, Database)
+		db := createMysqlConnection(mHost, mPort, mUser, mPassword, mDatabase)
 
 		defer func() {
 			_ = db.Close()
 		}()
 
-		if !HideProgress {
+		if !mHideProgress {
 			progress.Start()
 		}
 
-		schemaFile, err := os.Open(BackupFolder + "/zabbix.schema.sql.gz")
+		schemaFile, err := os.Open(path.Join(mBackupFolder, "zabbix.schema.sql.gz"))
 
 		if err != nil {
 			return err
@@ -172,11 +174,11 @@ func main() {
 			return err
 		}
 
-		if !HideProgress {
+		if !mHideProgress {
 			progress.Increment()
 		}
 
-		ForEachFile(BackupFolder+"/data", func(file *os.File) {
+		forEachFile(path.Join(mBackupFolder, "data"), func(file *os.File) {
 			Files <- file
 		})
 
@@ -190,7 +192,7 @@ func main() {
 	}
 }
 
-func CreateMysqlConnection(host, port, username, password, database string) *sql.DB {
+func createMysqlConnection(host, port, username, password, database string) *sql.DB {
 	db, err := sql.Open("mysql", fmt.Sprintf(
 		"%s:%s@tcp(%s:%s)/%s",
 		username,
@@ -207,11 +209,11 @@ func CreateMysqlConnection(host, port, username, password, database string) *sql
 	return db
 }
 
-func StartWorker(files <-chan *os.File, db *sql.DB, progress *pb.ProgressBar) {
-	if !HideProgress {
+func startWorker(files <-chan *os.File, db *sql.DB, progress *pb.ProgressBar) {
+	if !mHideProgress {
 		for f := range files {
 			progress.Increment()
-			ReadFile(f, func(line string) {
+			readFile(f, func(line string) {
 				_, err := db.Exec(line)
 				if err != nil {
 					log.Printf("Error: %s [%s]", err, line)
@@ -220,7 +222,7 @@ func StartWorker(files <-chan *os.File, db *sql.DB, progress *pb.ProgressBar) {
 		}
 	} else {
 		for f := range files {
-			ReadFile(f, func(line string) {
+			readFile(f, func(line string) {
 				_, err := db.Exec(line)
 				if err != nil {
 					log.Printf("Error: %s [%s]", err, line)
@@ -230,7 +232,7 @@ func StartWorker(files <-chan *os.File, db *sql.DB, progress *pb.ProgressBar) {
 	}
 }
 
-func ReadFile(file *os.File, handle OnLineReaded) {
+func readFile(file *os.File, handle onLineReaded) {
 	gz, err := gzip.NewReader(file)
 
 	if err != nil {
@@ -251,7 +253,7 @@ func ReadFile(file *os.File, handle OnLineReaded) {
 	}
 }
 
-func ForEachFile(path string, handle EachFile) {
+func forEachFile(path string, handle eachFile) {
 	err := filepath.Walk(path, func(f string, info os.FileInfo, err error) error {
 		if f == path {
 			return nil
