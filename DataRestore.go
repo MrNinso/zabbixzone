@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"database/sql"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path"
@@ -13,7 +12,6 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/cheggaaa/pb/v3"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/urfave/cli/v2"
 )
@@ -25,7 +23,6 @@ type eachFile func(file *os.File)
 var (
 	mBackupFolder, mHost, mPort, mUser, mPassword, mDatabase string
 	mWorkers                                                 int
-	mHideProgress                                            bool
 )
 
 func main() {
@@ -97,30 +94,14 @@ func main() {
 			Value:       "zabbix",
 			Destination: &mDatabase,
 		},
-
-		&cli.BoolFlag{
-			Name:        "hide-progress",
-			Aliases:     []string{"hp"},
-			Usage:       "Hide Progress bar",
-			Value:       false,
-			HasBeenSet:  false,
-			Destination: &mHideProgress,
-		},
 	}
 
 	app.Action = func(context *cli.Context) error {
 		Files := make(chan *os.File)
 
-		var progress *pb.ProgressBar
-
-		if !mHideProgress {
-			fs, _ := ioutil.ReadDir(path.Join(mBackupFolder, "data"))
-			progress = pb.Default.New(len(fs) + 1)
-		}
-
 		fmt.Printf("Starting %d Workers\n", mWorkers)
 		for w := 1; w <= mWorkers; w++ {
-			go startWorker(Files, createMysqlConnection(mHost, mPort, mUser, mPassword, mDatabase), progress)
+			go startWorker(Files, createMysqlConnection(mHost, mPort, mUser, mPassword, mDatabase))
 		}
 
 		fmt.Println("Restoring...")
@@ -130,10 +111,6 @@ func main() {
 		defer func() {
 			_ = db.Close()
 		}()
-
-		if !mHideProgress {
-			progress.Start()
-		}
 
 		schemaFile, err := os.Open(path.Join(mBackupFolder, "zabbix.schema.sql.gz"))
 
@@ -174,10 +151,6 @@ func main() {
 			return err
 		}
 
-		if !mHideProgress {
-			progress.Increment()
-		}
-
 		forEachFile(path.Join(mBackupFolder, "data"), func(file *os.File) {
 			Files <- file
 		})
@@ -209,26 +182,16 @@ func createMysqlConnection(host, port, username, password, database string) *sql
 	return db
 }
 
-func startWorker(files <-chan *os.File, db *sql.DB, progress *pb.ProgressBar) {
-	if !mHideProgress {
-		for f := range files {
-			progress.Increment()
-			readFile(f, func(line string) {
-				_, err := db.Exec(line)
-				if err != nil {
-					log.Printf("Error: %s [%s]", err, line)
-				}
-			})
-		}
-	} else {
-		for f := range files {
-			readFile(f, func(line string) {
-				_, err := db.Exec(line)
-				if err != nil {
-					log.Printf("Error: %s [%s]", err, line)
-				}
-			})
-		}
+func startWorker(files <-chan *os.File, db *sql.DB) {
+	for f := range files {
+		fmt.Printf("Start restoring %s\n", f.Name())
+		readFile(f, func(line string) {
+			_, err := db.Exec(line)
+			if err != nil {
+				log.Printf("Error: %s [%s]", err, line)
+			}
+		})
+		fmt.Printf("Complete restoring %s\n", f.Name())
 	}
 }
 
