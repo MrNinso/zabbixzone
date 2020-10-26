@@ -114,7 +114,7 @@ func main() {
 		var progress *pb.ProgressBar
 
 		if !mHideProgress {
-			fs, _ := ioutil.ReadDir(mBackupFolder + "/data")
+			fs, _ := ioutil.ReadDir(path.Join(mBackupFolder, "data"))
 			progress = pb.Default.New(len(fs) + 1)
 		}
 
