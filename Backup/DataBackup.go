@@ -147,9 +147,9 @@ func main() {
 				"--opt",
 				"--no-create-info",
 				"--extended-insert=FALSE",
+				mDatabase,
 				"--tables",
 				table,
-				mDatabase,
 			), path.Join(dataBackupDir, fmt.Sprintf("%s.data.sql.gz", table)))
 
 			if err != nil {
