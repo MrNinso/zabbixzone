@@ -46,7 +46,7 @@ func main() {
 			Aliases:     []string{"w"},
 			Usage:       "Number of workers for data restore",
 			Required:    false,
-			Value:       runtime.NumCPU(),
+			Value:       runtime.NumCPU()*runtime.NumCPU(),
 			Destination: &mWorkers,
 		},
 
